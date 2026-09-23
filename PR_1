@@ -3,86 +3,76 @@ grep -Eo '^[^:]+' passwd | sort
 2 задание:
 grep -v '^#' /etc/protocols | awk '{print $2, $1}' | sort -nr | head -n 5
 3 задание:
-nano banner
+(base) user@users-MacBook-Air ~ % nano banner
+#!/bin/bash
 
-cat << 'EOF' > banner
-#!/bin/sh
-text=$1
-len=${#text}
-dashes=$(perl -e "print '-' x ($len + 2)")
-border="+${dashes}+"
-echo "$border"
-echo "| $text |"
-echo "$border"
-EOF
-chmod +x banner
+text="$1"
+len=${#text} #считает количество символов из введенного текста
+dashes="" #переменная в которую будем вписывать дефисы для нашей рамки
+for (( i=0; i < len + 2; i++ )); do
+    dashes="${dashes}-"
+done
 
-./banner Hello\ from\ RTU\ MIREA!
+echo "+${dashes}+"
+echo "| ${text} |"
+echo "+${dashes}+"
+
+
+(base) user@users-MacBook-Air ~ % chmod +x banner
+(base) user@users-MacBook-Air ~ % ./banner "Hello from RTU MIREA"
++----------------------+
+| Hello from RTU MIREA |
++----------------------+
 
 
 4 задание:
-grep -E -o '[a-zA-Z_][a-zA-Z0-9_]*' profile | sort -u
+grep -E -o '[a-zA-Z_][a-zA-Z0-9_]*' profile | sort -u (uniq)
+
 5 задание:
-touch reg
 (base) user@users-MacBook-Air ~ % nano reg
+
 #!/bin/bash
-if [ -z "$1" ]; then
-    echo "Ошибка: Укажите имя программы для регистрации."
-    echo "Использование: $0 <имя_файла>"
-    exit 1
-fi
-if [ ! -f "$1" ]; then
-    echo "Ошибка: Файл '$1' не найден!"
-    exit 1
-fi
 chmod +x "$1"
 sudo cp "$1" /usr/local/bin/
-if [ $? -eq 0 ]; then
-    echo "Успешно: Программа '$1' зарегистрирована и доступна из любой точки системы!"
-else
-    echo "Ошибка при копировании в /usr/local/bin"
-fi
 
 (base) user@users-MacBook-Air ~ % chmod +x reg
 (base) user@users-MacBook-Air ~ % ./reg banner
 Password:
-Успешно: Программа 'banner' зарегистрирована и доступна из любой точки системы!
-(base) user@users-MacBook-Air ~ % cd ~
-(base) user@users-MacBook-Air ~ % banner "Hello from anywhere!"
+(base) user@users-MacBook-Air ~ % banner "Hello from anywhere!" 
+
+
 
 6 задание:
-nano check_comments.sh
+(base) user@users-MacBook-Air ~ % nano check_com.sh
 #!/bin/bash
 
-find . -type f \( -name "*.c" -o -name "*.js" -o -name "*.py" \) | while read -r file; do
-    first_line=$(head -n 1 "$file")
-    ext="${file##*.}"
-
-    has_comment=0
-
-    case "$ext" in
-        c|js)
-            if echo "$first_line" | grep -qE '^[[:space:]]*(\/\/|\/\*)'; then
-                has_comment=1
+for file in *.c *.js *.py; do # Перебираем все файлы
+    if [ -f "$file" ]; then # Проверяем, существует ли реальный файл с таким именем
+        line=$(head -n 1 "$file")
+        if [[ "$file" == *.py ]]; then
+            if [[ "$line" == \#* ]]; then # начинается ли первая строчка с решетки, ставим \ чтобы $
+                echo "[ С КОММЕНТАРИЕМ ] $file"
+            else
+                echo "[ БЕЗ КОММЕНТАРИЯ ] $file"
             fi
-            ;;
-        py)
-            if echo "$first_line" | grep -qE '^[[:space:]]*#'; then
-                has_comment=1
+        fi
+        if [[ "$file" == *.c || "$file" == *.js ]]; then
+            if [[ "$line" == //* || "$line" == /\** ]]; then
+                echo "[ С КОММЕНТАРИЕМ ] $file"
+            else
+                echo "[ БЕЗ КОММЕНТАРИЯ ] $file"
             fi
-            ;;
-    esac
-
-    if [ $has_comment -eq 1 ]; then
-        echo "[ С КОММЕНТАРИЕМ ] $file"
-    else
-        echo "[ БЕЗ КОММЕНТАРИЯ ] $file"
+        fi
     fi
-done
-
-
-chmod +x check_comments.sh
-./check_comments.sh
+done  
+(base) user@users-MacBook-Air ~ % echo "# fnvtnitug" > test1.py
+(base) user@users-MacBook-Air ~ % echo "int main(){return 0;}" > test2.c
+(base) user@users-MacBook-Air ~ % echo "// Hello JS" > test3.js
+(base) user@users-MacBook-Air ~ % chmod +x check_com.sh
+(base) user@users-MacBook-Air ~ % ./check_com.sh
+[ БЕЗ КОММЕНТАРИЯ ] test2.c
+[ С КОММЕНТАРИЕМ ] test3.js
+[ С КОММЕНТАРИЕМ ] test1.py
 
 
 7 задание:

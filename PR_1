@@ -3,168 +3,115 @@ grep -Eo '^[^:]+' passwd | sort
 2 задание:
 grep -v '^#' /etc/protocols | awk '{print $2, $1}' | sort -nr | head -n 5
 3 задание:
-nano banner
+(base) user@users-MacBook-Air ~ % nano banner
+#!/bin/bash
 
-cat << 'EOF' > banner
-#!/bin/sh
-text=$1
-len=${#text}
-dashes=$(perl -e "print '-' x ($len + 2)")
-border="+${dashes}+"
-echo "$border"
-echo "| $text |"
-echo "$border"
-EOF
-chmod +x banner
+text="$1"
+len=${#text} #считает количество символов из введенного текста
+dashes="" #переменная в которую будем вписывать дефисы для нашей рамки
+for (( i=0; i < len + 2; i++ )); do
+    dashes="${dashes}-"
+done
 
-./banner Hello\ from\ RTU\ MIREA!
+echo "+${dashes}+"
+echo "| ${text} |"
+echo "+${dashes}+"
+
+
+(base) user@users-MacBook-Air ~ % chmod +x banner
+(base) user@users-MacBook-Air ~ % ./banner "Hello from RTU MIREA"
++----------------------+
+| Hello from RTU MIREA |
++----------------------+
 
 
 4 задание:
-grep -E -o '[a-zA-Z_][a-zA-Z0-9_]*' profile | sort -u
+grep -E -o '[a-zA-Z_][a-zA-Z0-9_]*' profile | sort -u (uniq)
+
 5 задание:
-touch reg
 (base) user@users-MacBook-Air ~ % nano reg
+
 #!/bin/bash
-if [ -z "$1" ]; then
-    echo "Ошибка: Укажите имя программы для регистрации."
-    echo "Использование: $0 <имя_файла>"
-    exit 1
-fi
-if [ ! -f "$1" ]; then
-    echo "Ошибка: Файл '$1' не найден!"
-    exit 1
-fi
 chmod +x "$1"
 sudo cp "$1" /usr/local/bin/
-if [ $? -eq 0 ]; then
-    echo "Успешно: Программа '$1' зарегистрирована и доступна из любой точки системы!"
-else
-    echo "Ошибка при копировании в /usr/local/bin"
-fi
 
 (base) user@users-MacBook-Air ~ % chmod +x reg
 (base) user@users-MacBook-Air ~ % ./reg banner
 Password:
-Успешно: Программа 'banner' зарегистрирована и доступна из любой точки системы!
-(base) user@users-MacBook-Air ~ % cd ~
-(base) user@users-MacBook-Air ~ % banner "Hello from anywhere!"
+(base) user@users-MacBook-Air ~ % banner "Hello from anywhere!" 
+
+
 
 6 задание:
-nano check_comments.sh
+(base) user@users-MacBook-Air ~ % nano check_com.sh
 #!/bin/bash
 
-find . -type f \( -name "*.c" -o -name "*.js" -o -name "*.py" \) | while read -r file; do
-    first_line=$(head -n 1 "$file")
-    ext="${file##*.}"
-
-    has_comment=0
-
-    case "$ext" in
-        c|js)
-            if echo "$first_line" | grep -qE '^[[:space:]]*(\/\/|\/\*)'; then
-                has_comment=1
+for file in *.c *.js *.py; do # Перебираем все файлы
+    if [ -f "$file" ]; then # Проверяем, существует ли реальный файл с таким именем
+        line=$(head -n 1 "$file")
+        if [[ "$file" == *.py ]]; then
+            if [[ "$line" == \#* ]]; then # начинается ли первая строчка с решетки, ставим \ чтобы $
+                echo "[ С КОММЕНТАРИЕМ ] $file"
+            else
+                echo "[ БЕЗ КОММЕНТАРИЯ ] $file"
             fi
-            ;;
-        py)
-            if echo "$first_line" | grep -qE '^[[:space:]]*#'; then
-                has_comment=1
+        fi
+        if [[ "$file" == *.c || "$file" == *.js ]]; then
+            if [[ "$line" == //* || "$line" == /\** ]]; then
+                echo "[ С КОММЕНТАРИЕМ ] $file"
+            else
+                echo "[ БЕЗ КОММЕНТАРИЯ ] $file"
             fi
-            ;;
-    esac
-
-    if [ $has_comment -eq 1 ]; then
-        echo "[ С КОММЕНТАРИЕМ ] $file"
-    else
-        echo "[ БЕЗ КОММЕНТАРИЯ ] $file"
+        fi
     fi
-done
-
-
-chmod +x check_comments.sh
-./check_comments.sh
+done  
+(base) user@users-MacBook-Air ~ % echo "# fnvtnitug" > test1.py
+(base) user@users-MacBook-Air ~ % echo "int main(){return 0;}" > test2.c
+(base) user@users-MacBook-Air ~ % echo "// Hello JS" > test3.js
+(base) user@users-MacBook-Air ~ % chmod +x check_com.sh
+(base) user@users-MacBook-Air ~ % ./check_com.sh
+[ БЕЗ КОММЕНТАРИЯ ] test2.c
+[ С КОММЕНТАРИЕМ ] test3.js
+[ С КОММЕНТАРИЕМ ] test1.py
 
 
 7 задание:
 
-(base) user@users-MacBook-Air ~ % nano find_duplicates
+(base) user@users-MacBook-Air ~ % mkdir -p test_folder/sub1 test_folder/sub2
+(base) user@users-MacBook-Air ~ % touch test_folder/sub1/photo.jpg
+(base) user@users-MacBook-Air ~ % touch test_folder/sub2/photo.jpg
+(base) user@users-MacBook-Air ~ % touch test_folder/unique_name.txt
+
 #!/bin/bash
-
 if [ -z "$1" ]; then
-    echo "Ошибка: Укажите путь к директории."
-    echo "Использование: $0 <путь>"
-    exit 1
+    TARGET_DIR="."
+else
+    TARGET_DIR="$1"
 fi
+find "$TARGET_DIR" -type f -exec basename {} \; | sort | uniq -d
 
-TARGET_DIR="$1"
-
-if [ ! -d "$TARGET_DIR" ]; then
-    echo "Ошибка: Директория '$TARGET_DIR' не найдена!"
-    exit 1
-fi
-
-find "$TARGET_DIR" -type f -exec sha256sum {} + 2>/dev/null | \
-sort | \
-awk '{
-    hash = $1
-    $1 = ""
-    sub(/^ /, "", $0)
-    file = $0
-    
-    if (hash == prev_hash) {
-        if (printed == 0) {
-            print "\n[ Группа дубликатов ]"
-            print prev_file
-            printed = 1
-        }
-        print file
-    } else {
-        prev_hash = hash
-        prev_file = file
-        printed = 0
-    }
-}'
-(base) user@users-MacBook-Air ~ % chmod +x find_duplicates
-(base) user@users-MacBook-Air ~ % ./find_duplicates
-
+(base) user@users-MacBook-Air ~ % nano find_dubli.sh
+(base) user@users-MacBook-Air ~ % ./find_dubli.sh test_folder
+photo.jpg
 
 8 задание:
+(base) user@users-MacBook-Air ~ % nano archive
 
-(base) user@users-MacBook-Air ~ % nano archive_by_ext.sh
 #!/bin/bash
-
-if [ -z "$1" ]; then
-    echo "Ошибка: Укажите расширение файлов."
-    echo "Использование: $0 <расширение>"
-    exit 1
-fi
 EXT="$1"
-FILES=$(find . -maxdepth 1 -type f -name "*.$EXT")
-if [ -z "$FILES" ]; then
-    echo "Файлы с расширением .$EXT не найдены."
-    exit 1
-fi
-ARCHIVE_NAME="archive_$EXT.tar"
-tar -cvf "$ARCHIVE_NAME" $FILES
-echo "Успешно! Файлы с расширением .$EXT упакованы в '$ARCHIVE_NAME'."
+tar -cvf "archive_$EXT.tar" *."$EXT"
 
-(base) user@users-MacBook-Air ~ % chmod +x archive_by_ext.sh
-(base) user@users-MacBook-Air ~ % touch test1.txt test2.txt test3.txt
-(base) user@users-MacBook-Air ~ % ./archive_by_ext.sh txt
-a ./test1.txt
-a ./test2.txt
-a ./test3.txt
-a ./input.txt
-a ./output.txt
-Успешно! Файлы с расширением .txt упакованы в 'archive_txt.tar'.
-(base) user@users-MacBook-Air ~ % ls -l archive_txt.tar
--rw-r--r--  1 user  staff  4608 22 сент. 23:23 archive_txt.tar
-(base) user@users-MacBook-Air ~ % tar -tvf archive_txt.tar
--rw-r--r--  0 user   staff       0 22 сент. 23:22 ./test1.txt
--rw-r--r--  0 user   staff       0 22 сент. 23:22 ./test2.txt
--rw-r--r--  0 user   staff       0 22 сент. 23:22 ./test3.txt
--rw-r--r--  0 user   staff      23 22 сент. 22:32 ./input.txt
--rw-r--r--  0 user   staff      17 22 сент. 22:32 ./output.txt
+(base) user@users-MacBook-Air ~ % chmod +x archive
+(base) user@users-MacBook-Air ~ % touch file1.txt file2.txt file3.txt
+(base) user@users-MacBook-Air ~ % ./archive txt
+a file1.txt
+a file2.txt
+a file3.txt
+a input.txt
+a output.txt
+a test1.txt
+a test2.txt
+a test3.txt
 (base) user@users-MacBook-Air ~ % 
 
 
@@ -199,25 +146,16 @@ usage: cat [-belnstuv] [file ...]
 
 10 задание:
 
-(base) user@users-MacBook-Air ~ % nano find_empty_files.sh
-#!/bin/bash
+(base) user@users-MacBook-Air ~ % nano find_empty_files
 
-if [ "$#" -ne 1 ]; then
-    echo "Ошибка: Укажите целевую директорию."
-    echo "Использование: $0 <путь_к_директории>"
-    exit 1
-fi
+#!/bin/bash
 TARGET_DIR="$1"
-if [ ! -d "$TARGET_DIR" ]; then
-    echo "Ошибка: Директория '$TARGET_DIR' не найдена!"
-    exit 1
-fi
 find "$TARGET_DIR" -maxdepth 1 -type f -empty -name "*.txt" -exec basename {} \;
 
-(base) user@users-MacBook-Air ~ % chmod +x find_empty_files.sh
+(base) user@users-MacBook-Air ~ % chmod +x find_empty_files
 (base) user@users-MacBook-Air ~ % mkdir test_dir
 touch test_dir/empty1.txt test_dir/empty2.txt
 echo "Не пустой текст" > test_dir/not_empty.txt
-(base) user@users-MacBook-Air ~ % ./find_empty_files.sh test_dir
+(base) user@users-MacBook-Air ~ % ./find_empty_files test_dir
 empty2.txt
 empty1.txt

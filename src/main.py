@@ -5,19 +5,36 @@ import hashlib
 import pandas as pd
 username = getpass.getuser() #получаем юзернайм
 hostname = socket.gethostname()#получает хостнайм компьютера
-command = input(f"{username}@{hostname}:~$")
-folders = '/Users/user/Desktop/VScodePro/vfs.csv'
+
+folders = 'examples/vfs — копия.csv'
 reader = pd.read_csv(folders)
-parts = command. split()
-if command =='ls':
-    print (reader)
-elif parts [0] == "cd":
-    folder = parts[1]
-    print(f"{username}@{hostname}:/usr/local/bin/python3/folders/{folder}$")
-elif command == "exit":
-    print("Выход из программы")
-elif command == "vfs-info":
-    print("Файл VFS:", folders, "\n","SHA-256:", hashlib.sha256(open(folders, "rb").read()).hexdigest()) #open(folders, "rb") - открывает файл в 2 коде,hexdigest() - превращает хэш в строку 
-    
-else:
-    print("Неправильный ввод команды")
+
+while True:
+    command = input(f"{username}@{hostname}:~$ ")
+    parts = command.split()
+
+    if not parts:
+        print("Введите команду")
+
+    elif parts[0] == "ls":
+        print(reader)
+
+    elif parts[0] == "cd":
+        if len(parts) < 2:
+            print("Укажите папку")
+        else:
+            folder = parts[1]
+            print(f"{username}@{hostname}:/usr/local/bin/python3/folders/{folder}$")
+
+    elif parts[0] == "exit":
+        print("Выход из программы")
+        break
+
+    elif parts[0] == "vfs-info":
+        print("Файл VFS:", folders)
+        print("SHA-256:", hashlib.sha256(
+            open(folders, "rb").read()
+        ).hexdigest())
+
+    else:
+        print("Неправильный ввод команды")

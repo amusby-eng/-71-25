@@ -1,7 +1,7 @@
 import getpass#подключаем модуль, который умеет узнавать имя пользователя
 import socket#подключаем модуль, через который можно получить имя компьютера
 import csv
-import hashlib
+import hashlib #модуль для определения хэша
 import pandas as pd
 username = getpass.getuser() #получаем юзернайм
 hostname = socket.gethostname()#получает хостнайм компьютера
@@ -13,10 +13,7 @@ while True:
     command = input(f"{username}@{hostname}:~$ ")
     parts = command.split()
 
-    if not parts:
-        print("Введите команду")
-
-    elif parts[0] == "ls":
+    if parts[0] == "ls":
         print(reader)
 
     elif parts[0] == "cd":
@@ -32,9 +29,6 @@ while True:
 
     elif parts[0] == "vfs-info":
         print("Файл VFS:", folders)
-        print("SHA-256:", hashlib.sha256(
-            open(folders, "rb").read()
-        ).hexdigest())
-
+        print("SHA-256:", hashlib.sha256(open(folders, "rb").read()).hexdigest())# переводим в бинарный режим, потом все это читаем и хэшируем
     else:
         print("Неправильный ввод команды")

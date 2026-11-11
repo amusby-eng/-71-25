@@ -1,152 +1,81 @@
-# Визуализатор графа зависимостей пакетов
+# Dependency Graph Visualizer
 
-## Описание проекта
-
-Программа предназначена для получения, анализа и визуализации графа зависимостей программных пакетов.
-
-С помощью программы можно:
-- Получать зависимости пакетов из репозитория NuGet.
-- Работать с тестовым репозиторием в формате JSON.
-- Строить граф зависимостей с помощью алгоритма DFS.
-- Ограничивать глубину обхода графа.
-- Исключать пакеты по заданной подстроке.
-- Находить обратные зависимости пакетов.
-- Выводить граф в виде ASCII-дерева.
-- Создавать диаграмму зависимостей в формате D2 и сохранять её в PNG.
-
-## Используемые технологии
-
-- Python 3
-- argparse — обработка аргументов командной строки.
-- urllib — получение данных из репозитория.
-- json — работа с тестовым репозиторием.
-- zipfile — чтение архивов NuGet.
-- ElementTree — обработка XML-файлов.
-- D2 — создание изображения графа.
-
-## Структура проекта
-
-```text
-practical-work-2/
-│
-├── main.py
-├── test_repo.json
-├── README.md
-└── graph.png
-```
-
-## Установка и запуск
-
-Для работы программы необходимо установить Python 3 и D2.
-
-Установка D2 на macOS:
+## Установка
 
 ```bash
-brew install d2
+python3 -m venv .venv
+source .venv/bin/activate
+brew install plantuml
 ```
 
-Запуск программы осуществляется через терминал из папки проекта.
+## Запуск
 
-## Параметры командной строки
+Из корневой папки `practical-work-2`:
 
-| Параметр | Описание |
-|---|---|
-| `--package` | Имя анализируемого пакета |
-| `--repository` | URL репозитория или путь к тестовому JSON-файлу |
-| `--test-repo` | Включение тестового режима |
-| `--output` | Имя выходного PNG-файла |
-| `--ascii` | Вывод ASCII-дерева |
-| `--depth` | Максимальная глубина обхода |
-| `--exclude` | Исключение пакетов по подстроке |
-| `--reverse` | Поиск обратных зависимостей |
+```bash
+python3 src/main.py --package A --repository examples/repo.json --test-repo
+```
 
-## Работа с тестовым репозиторием
+С ASCII-деревом:
 
-Для тестирования используется JSON-файл со связями между пакетами.
+```bash
+python3 src/main.py --package A --repository examples/repo.json --test-repo --ascii
+```
 
-Пример содержимого `test_repo.json`:
+## Дополнительные параметры
+
+- `--depth 3` — глубина обхода.
+- `--exclude C` — исключить пакеты, содержащие `C`.
+- `--reverse B` — найти обратные зависимости пакета `B`.
+- `--output graph.png` — имя выходного изображения.
+
+## Пример
+
+```bash
+python3 src/main.py --package A --repository examples/repo.json --test-repo --ascii --depth 3 --output graph.png
+```
+
+Результат: файлы `graph.puml` и `graph.png`.
+
+### 1. Отрицательная глубина обхода
+```bash
+python3 src/main.py --package A --repository examples/repo.json --test-repo --depth -1
+```
+
+### 2. Пустое имя пакета
+```bash
+python3 src/main.py --package "" --repository examples/repo.json --test-repo
+```
+
+### 3. Несуществующий пакет
+```bash
+python3 src/main.py --package X --repository examples/repo.json --test-repo
+```
+
+### 4. Несуществующий файл репозитория
+```bash
+python3 src/main.py --package A --repository examples/missing.json --test-repo
+```
+
+### 5. Некорректный JSON
+```bash
+python3 src/main.py --package A --repository examples/invalid.json --test-repo
+```
+
+Для проверки создай файл `examples/invalid.json` с содержимым:
 
 ```json
 {
-    "A": ["B", "C"],
-    "B": ["D"],
-    "C": ["D", "E"],
-    "D": ["A"],
-    "E": []
+    "A": ["B",
 }
 ```
 
-В данном примере пакет A зависит от B и C, пакет B зависит от D, а пакет C зависит от D и E.
-
-Также в графе присутствует циклическая зависимость A → B → D → A.
-
-Запуск в тестовом режиме:
-
+### 6. Ошибка получения пакета из репозитория
 ```bash
-python3 main.py --package A --repository test_repo.json --test-repo
+python3 src/main.py --package Newtonsoft.Json:13.0.1 --repository https://invalid.example.com
 ```
 
-## Примеры запуска
-
-Построение графа зависимостей:
-
+### 7. Пустой адрес репозитория
 ```bash
-python3 main.py --package A --repository test_repo.json --test-repo
+python3 src/main.py --package A --repository ""
 ```
-
-Вывод ASCII-дерева:
-
-```bash
-python3 main.py --package A --repository test_repo.json --test-repo --ascii
-```
-
-Ограничение глубины обхода:
-
-```bash
-python3 main.py --package A --repository test_repo.json --test-repo --depth 1
-```
-
-Исключение пакетов:
-
-```bash
-python3 main.py --package A --repository test_repo.json --test-repo --exclude D
-```
-
-Поиск обратных зависимостей пакета B:
-
-```bash
-python3 main.py --package A --repository test_repo.json --test-repo --reverse B
-```
-
-Создание изображения графа:
-
-```bash
-python3 main.py --package A --repository test_repo.json --test-repo --depth 10 --ascii --output graph.png
-```
-
-В результате программа создаёт файл с описанием графа в формате D2 и изображение PNG.
-
-## Алгоритм работы
-
-Для построения графа используется алгоритм поиска в глубину (DFS) без рекурсии.
-
-Для обхода используется стек, в котором хранятся пакеты и глубина их расположения в графе.
-
-Множество `visited` позволяет проверять, какие пакеты уже были обработаны, и предотвращает повторный обход вершин при наличии циклических зависимостей.
-
-Для поиска обратных зависимостей создаётся граф с обратным направлением связей.
-
-## Результат работы
-
-В результате выполнения программы пользователь получает:
-- Список прямых и найденных транзитивных зависимостей.
-- Список обратных зависимостей, если они найдены.
-- ASCII-представление графа при включении соответствующего параметра.
-- Файл D2 с описанием графа.
-- Изображение графа в формате PNG.
-
-## Автор
-
-Практическая работа №2.
-
-Вариант №21.

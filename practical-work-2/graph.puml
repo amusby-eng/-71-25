@@ -1,0 +1,11 @@
+@startuml
+left to right direction
+component "A" as n0
+component "C" as n1
+component "B" as n2
+component "D" as n3
+n0 --> n2
+n0 --> n1
+n1 --> n0
+n2 --> n3
+@enduml

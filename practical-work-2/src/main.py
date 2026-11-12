@@ -1,162 +1,177 @@
+"""Визуализатор графа зависимостей
+пакетов."""
 
-import argparse #помогает принимать аргументы из командной строки
-import json 
-import urllib.request #скачивание фэйла из инета 
-import urllib.error
-import zipfile
+
+import argparse
+import json
 import subprocess
-from pathlib import Path
+import urllib.error
+import urllib.request
+import zipfile
 from io import BytesIO
-import xml.etree.ElementTree as ET #чтение XML
+from pathlib import Path
+import xml.etree.ElementTree as et
 
-
-# ЭТАП 2. Получение зависимостей из NuGet
 
 def read_test_repository(filename):
-    # Читаем тестовый репозиторий из JSON
+
+    """Загружает тестовый репозиторий
+    из JSON-файла."""
     with open(filename, "r", encoding="utf-8") as file:
-        graph = json.load(file)
-    return graph
+        return json.load(file)
 
 
-def get_dependencies(package, repository):
-    # Пакет для NuGet указываем так: ИмяПакета:Версия
+def create_package_url(package, repository):
+
+    """Формирует URL для загрузки NuGet-пакета."""
     name, version = package.split(":")
+    name = name.lower()
+    version = version.lower()
 
-    # Формируем ссылку на архив пакета
-    url = (
-        repository.rstrip("/")
-        + "/"
-        + name.lower()
-        + "/"
-        + version.lower()
-        + "/"
-        + name.lower()
-        + "."
-        + version.lower()
-        + ".nupkg"
+    return (
+        f"{repository.rstrip('/')}/{name}/{version}/"
+        f"{name}.{version}.nupkg"
     )
 
-    # Скачиваем архив
-    response = urllib.request.urlopen(url, timeout=15)
-    data = response.read()
 
+def find_nuspec(archive):
 
-    archive = zipfile.ZipFile(BytesIO(data))#открываем архив
-
-    nuspec_name = None
-
+    """Находит файл спецификации nuspec
+    в архиве."""
     for filename in archive.namelist():
         if filename.endswith(".nuspec"):
-            nuspec_name = filename
-            break
+            return filename
+    return None
 
-    if nuspec_name is None:
-        return []
 
-    # Читаем XML
-    xml_data = archive.read(nuspec_name)
-    root = ET.fromstring(xml_data)#преобразует в структуру элементов питон
+def parse_dependency_version(version):
 
-    dependencies = []
+    """Извлекает версию из диапазона версий."""
+    return version.strip("[]()").split(",")[0].strip()
+
+
+def parse_dependencies(xml_data):
+
+    """Извлекает зависимости из
+    XML-спецификации."""
+    root = et.fromstring(xml_data)
     dependency_list = root.find(".//{*}dependencies")
 
     if dependency_list is None:
-        return dependencies
+        return []
 
-    # Получаем названия зависимостей и их версии
+    dependencies = []
     for dependency in dependency_list.findall(".//{*}dependency"):
         dep_name = dependency.get("id")
         dep_version = dependency.get("version")
 
-        if dep_name is None or dep_version is None:
+        if not dep_name or not dep_version:
             continue
 
-        # Например, из диапазона [1.2.0, 2.0.0)
-        # берём нижнюю границу 1.2.0
-        dep_version = dep_version.strip("[]()")
-        dep_version = dep_version.split(",")[0].strip()
-
-        if dep_version != "":
-            dependencies.append(dep_name + ":" + dep_version)
+        dep_version = parse_dependency_version(dep_version)
+        if dep_version:
+            dependencies.append(f"{dep_name}:{dep_version}")
 
     return dependencies
 
 
-# ЭТАП 3. Построение графа с помощью DFS без рекурсии
+def get_dependencies(package, repository):
+
+    """Загружает пакет и получает
+    его зависимости."""
+    url = create_package_url(package, repository)
+
+    with urllib.request.urlopen(url, timeout=15) as response:
+        data = response.read()
+
+    with zipfile.ZipFile(BytesIO(data)) as archive:
+        nuspec_name = find_nuspec(archive)
+        if nuspec_name is None:
+            return []
+
+        xml_data = archive.read(nuspec_name)
+
+    return parse_dependencies(xml_data)
+
+
+def is_excluded(package, exclude):
+
+    """Проверяет, соответствует ли
+    пакет исключению."""
+    return bool(exclude) and exclude.lower() in package.lower()
+
+
+def get_package_dependencies(current, repository, test_mode):
+
+    """Получает зависимости из тестового
+    или удалённого репозитория."""
+    if test_mode:
+        return repository.get(current, [])
+    return get_dependencies(current, repository)
+
 
 def dfs(package, repository, test_mode, depth, exclude):
+
+    """Строит граф зависимостей
+    обходом в глубину."""
     graph = {}
     visited = set()
-
-    # В стеке храним пакет и глубину
     stack = [(package, 0)]
 
-    while len(stack) > 0:
+    while stack:
         current, level = stack.pop()
 
-        # Если пакет уже встречался, пропускаем его
-        if current in visited:
-            continue
-
-        # Исключаем пакеты, содержащие заданную подстроку
-        if exclude != "" and exclude.lower() in current.lower():
+        if current in visited or is_excluded(current, exclude):
             continue
 
         visited.add(current)
         graph[current] = []
 
-        # Если достигли максимальной глубины, дальше не идём
         if level >= depth:
             continue
 
-        # Получаем зависимости
-        if test_mode:
-            dependencies = repository.get(current, [])
-        else:
-            dependencies = get_dependencies(current, repository)
+        dependencies = get_package_dependencies(
+            current, repository, test_mode
+        )
 
         for dependency in dependencies:
-            if exclude != "" and exclude.lower() in dependency.lower():
+            if is_excluded(dependency, exclude):
                 continue
 
             graph[current].append(dependency)
-
             if dependency not in visited:
                 stack.append((dependency, level + 1))
 
     return graph
 
 
-# ЭТАП 4. Поиск обратных зависимостей
+def build_reverse_graph(graph):
+
+    """Строит граф обратных зависимостей."""
+    reverse_graph = {package: [] for package in graph}
+
+    for current, dependencies in graph.items():
+        for dependency in dependencies:
+            reverse_graph.setdefault(dependency, []).append(current)
+
+    return reverse_graph
+
 
 def find_reverse_dependencies(graph, package):
-    reverse_graph = {}
 
-    # Переворачиваем все связи графа
-    for current in graph:
-        reverse_graph[current] = []
-
-    for current in graph:
-        for dependency in graph[current]:
-            if dependency not in reverse_graph:
-                reverse_graph[dependency] = []
-
-            reverse_graph[dependency].append(current)
-
-    # Теперь ищем пакеты, которые зависят от заданного
+    """Находит все обратные зависимости
+    пакета."""
+    reverse_graph = build_reverse_graph(graph)
     result = []
     visited = set()
     stack = [package]
 
     while stack:
         current = stack.pop()
-
         if current in visited:
             continue
 
         visited.add(current)
-
         for dependency in reverse_graph.get(current, []):
             if dependency not in visited:
                 result.append(dependency)
@@ -165,102 +180,125 @@ def find_reverse_dependencies(graph, package):
     return result
 
 
-# ЭТАП 5. Вывод ASCII-дерева
-
 def print_ascii_tree(graph, package):
+
+    """Выводит граф зависимостей
+    в виде ASCII-дерева."""
     print("\nASCII-дерево:")
     print(package)
 
-    stack = []
-
-    for dependency in reversed(graph.get(package, [])):
-        stack.append((dependency, "    "))
-
+    stack = [
+        (dependency, "    ")
+        for dependency in reversed(graph.get(package, []))
+    ]
     visited = {package}
 
     while stack:
         current, prefix = stack.pop()
-
         print(prefix + "|-- " + current)
 
-        # Не раскрываем пакет повторно, чтобы не зациклиться
         if current in visited:
             continue
 
         visited.add(current)
-
         for dependency in reversed(graph.get(current, [])):
             stack.append((dependency, prefix + "    "))
 
 
-# ЭТАП 5. Создание файла PlantUML и изображения PNG
+def collect_packages(graph):
 
-def create_graph_image(graph, output):
-    # Получаем все пакеты из графа
-    packages = list(graph.keys())
+    """Собирает все пакеты из графа
+    и его зависимостей."""
+    packages = list(graph)
 
-    # Добавляем пакеты, которые встречаются только в зависимостях
     for dependencies in graph.values():
         for dependency in dependencies:
             if dependency not in packages:
                 packages.append(dependency)
 
-    # Создаём короткие имена для пакетов: n0, n1, n2...
-    names = {}
+    return packages
 
-    for i in range(len(packages)):
-        names[packages[i]] = "n" + str(i)
 
-    # Начинаем формировать PlantUML-диаграмму
-    lines = []
-    lines.append("@startuml")
-    lines.append("left to right direction")
+def create_package_names(packages):
 
-    # Добавляем вершины
+    """Создаёт имена узлов для
+    диаграммы PlantUML."""
+    return {
+        package: f"n{index}"
+        for index, package in enumerate(packages)
+    }
+
+
+def create_plantuml_lines(graph, packages, names):
+
+    """Формирует строки диаграммы PlantUML."""
+    lines = ["@startuml", "left to right direction"]
+
     for package in packages:
-        lines.append('component "' + package + '" as ' + names[package])
+        lines.append(
+            f'component "{package}" as {names[package]}'
+        )
 
-    # Добавляем связи
-    for package in graph:
-        for dependency in graph[package]:
-            lines.append(names[package] + " --> " + names[dependency])
+    for package, dependencies in graph.items():
+        for dependency in dependencies:
+            lines.append(
+                f"{names[package]} --> {names[dependency]}"
+            )
 
-    # Завершаем диаграмму
     lines.append("@enduml")
+    return lines
 
-    # Формируем имя текстового файла с расширением .puml
+
+def save_plantuml(lines, output):
+
+    """Сохраняет диаграмму PlantUML в файл."""
     puml_file = str(Path(output).with_suffix(".puml"))
 
-    # Сохраняем PlantUML-код в файл
     with open(puml_file, "w", encoding="utf-8") as file:
         file.write("\n".join(lines))
 
     print("\nФайл PlantUML сохранён:", puml_file)
+    return puml_file
 
-    # Преобразуем PlantUML в PNG
+
+def convert_to_png(puml_file):
+
+    """Преобразует файл PlantUML
+    в изображение PNG."""
     try:
         subprocess.run(
             ["plantuml", "-tpng", puml_file],
             check=True
         )
-
         png_file = str(Path(puml_file).with_suffix(".png"))
         print("Изображение сохранено:", png_file)
-
     except FileNotFoundError:
-        print("PlantUML не установлен. Установи его командой: brew install plantuml")
-
+        print(
+            "PlantUML не установлен. "
+            "Установи его командой: brew install plantuml"
+        )
     except subprocess.CalledProcessError:
-        print("Не удалось создать PNG. Проверь файл PlantUML.")
+        print("Не удалось создать PNG")
 
 
-# ЭТАП 1. Настройки программы и запуск
+def create_graph_image(graph, output):
 
-def main():
-    parser = argparse.ArgumentParser( #принимает аргументы и разбирает их
-        description="Визуализатор графа зависимостей пакетов"
+    """Создаёт изображение графа
+    зависимостей."""
+    packages = collect_packages(graph)
+    names = create_package_names(packages)
+    lines = create_plantuml_lines(graph, packages, names)
+    puml_file = save_plantuml(lines, output)
+    convert_to_png(puml_file)
+
+
+def create_parser():
+
+    """Создаёт парсер аргументов
+    командной строки."""
+    parser = argparse.ArgumentParser(
+        description="Визуализатор графа"
     )
-
     parser.add_argument("--package", required=True)
     parser.add_argument("--repository", required=True)
     parser.add_argument("--test-repo", action="store_true")
@@ -269,10 +307,27 @@ def main():
     parser.add_argument("--depth", type=int, default=2)
     parser.add_argument("--exclude", default="")
     parser.add_argument("--reverse", default="")
+    return parser
 
-    args = parser.parse_args()#хранит в себе наши значение
 
-    # Выводим все значения
+def validate_arguments(parser, args):
+
+    """Проверяет корректность
+    аргументов программы."""
+    if args.depth < 0:
+        parser.error("Глубина не может быть отриц")
+
+    if not args.package.strip():
+        parser.error("Не указано имя пакета")
+
+    if not args.repository.strip():
+        parser.error("Не указан репозиторий")
+
+
+def print_arguments(args):
+
+    """Выводит переданные параметры
+    программы."""
     print("Параметры программы:")
     print("package =", args.package)
     print("repository =", args.repository)
@@ -283,83 +338,118 @@ def main():
     print("exclude =", args.exclude)
     print("reverse =", args.reverse)
 
-    #обработка ошибок
-    if args.depth < 0:
-        parser.error("Глубина не может быть отрицательной")
 
-    if args.package.strip() == "":
-        parser.error("Не указано имя пакета")
+def print_dependency_graph(graph):
 
-    if args.repository == "":
-        parser.error("Не указан репозиторий")
+    """Выводит граф и прямые зависимости."""
+    print("\nГраф зависимостей:")
+    for package, dependencies in graph.items():
+        print(package, "->", dependencies)
+
+    print("\nПрямые зависимости:")
+    for dependency in graph.get(ROOT_PACKAGE, []):
+        print(dependency)
+
+
+ROOT_PACKAGE = ""
+
+
+def print_reverse_dependencies(graph, package):
+
+    """Выводит обратные зависимости
+    указанного пакета."""
+    reverse = find_reverse_dependencies(graph, package)
+
+    print("\nОбратные зависимости", package, ":")
+
+    if not reverse:
+        print("Не найдены")
+        return
+
+    for dependency in reverse:
+        print(dependency)
+
+
+def load_repository(args):
+
+    """Загружает выбранный репозиторий
+    пакетов."""
+    if not args.test_repo:
+        return args.repository
+
+    repository = read_test_repository(args.repository)
+
+    if args.package not in repository:
+        print("Ошибка: такого пакета нет")
+        return None
+
+    return repository
+
+
+def handle_errors(error):
+
+    """Выводит сообщение для
+    перехваченной ошибки."""
+    messages = {
+        FileNotFoundError: "Ошибка: файл не найден",
+        json.JSONDecodeError: "неправильный формат JSON",
+        urllib.error.URLError:
+            "не удалось получить пакет",
+        zipfile.BadZipFile: "скачанный файл повреждён",
+        et.ParseError: "не удалось прочитать XML",
+    }
+    print(messages[type(error)])
+
+
+def run_program(args):
+
+    """Выполняет основной сценарий
+    визуализации зависимостей."""
+    global ROOT_PACKAGE
+    ROOT_PACKAGE = args.package
+
+    repository = load_repository(args)
+    if repository is None:
+        return
+
+    graph = dfs(
+        args.package,
+        repository,
+        args.test_repo,
+        args.depth,
+        args.exclude
+    )
+
+    print_dependency_graph(graph)
+
+    reverse_package = args.reverse or args.package
+    print_reverse_dependencies(graph, reverse_package)
+
+    if args.ascii:
+        print_ascii_tree(graph, args.package)
+
+    create_graph_image(graph, args.output)
+
+
+def main():
+
+    """Запускает программу и
+    обрабатывает ошибки."""
+    parser = create_parser()
+    args = parser.parse_args()
+    validate_arguments(parser, args)
+    print_arguments(args)
 
     try:
-        repository = args.repository
-
-        # Если выбран тестовый режим, читаем JSON
-        if args.test_repo:
-            repository = read_test_repository(args.repository)
-
-            if args.package not in repository:
-                print("Ошибка: такого пакета нет в тестовом репозитории")
-                return
-
-        # Строим граф
-        graph = dfs(
-            args.package,
-            repository,
-            args.test_repo,
-            args.depth,
-            args.exclude
-        )
-
-        print("\nГраф зависимостей:")
-
-        for package in graph:
-            print(package, "->", graph[package])
-
-        # Этап 2: выводим прямые зависимости корневого пакета
-        print("\nПрямые зависимости:")
-        for dependency in graph.get(args.package, []):
-            print(dependency)
-
-        # Этап 4: выводим обратные зависимости
-        reverse_package = args.reverse
-
-        if reverse_package == "":
-            reverse_package = args.package
-
-        reverse = find_reverse_dependencies(graph, reverse_package)
-
-        print("\nОбратные зависимости пакета", reverse_package, ":")
-
-        if len(reverse) == 0:
-            print("Не найдены")
-        else:
-            for dependency in reverse:
-                print(dependency)
-
-        # Этап 5: ASCII-дерево
-        if args.ascii:
-            print_ascii_tree(graph, args.package)
-
-        # ЭТАП 5. Создание файла PlantUML и изображения PNG
-        create_graph_image(graph, args.output)
-
-    except FileNotFoundError:
-        print("Ошибка: файл не найден")
-
-    except json.JSONDecodeError:
-        print("Ошибка: неправильный формат JSON")
-
-    except urllib.error.URLError:
-        print("Ошибка: не удалось получить пакет из репозитория")
-
-    except zipfile.BadZipFile:
-        print("Ошибка: скачанный файл пакета повреждён")
-
-    except ET.ParseError:
-        print("Ошибка: не удалось прочитать XML")
+        run_program(args)
+    except (
+        FileNotFoundError,
+        json.JSONDecodeError,
+        urllib.error.URLError,
+        zipfile.BadZipFile,
+        et.ParseError,
+    ) as error:
+        handle_errors(error)
 
 
 if __name__ == "__main__":

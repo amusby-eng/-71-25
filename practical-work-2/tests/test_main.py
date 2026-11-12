@@ -1,32 +1,39 @@
-import json
-import pytest
 
+import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+import pytest
+
+sys.path.insert(
+    0,
+    str(Path(__file__).resolve().parents[1] / "src")
+)
 
 from main import (
     read_test_repository,
     dfs,
     find_reverse_dependencies,
     print_ascii_tree,
-    create_graph_image
+    create_graph_image,
 )
 
 
-# Тест чтения тестового репозитория
 def test_read_test_repository(tmp_path):
+
     file = tmp_path / "repo.json"
-    file.write_text('{"A": ["B"], "B": []}', encoding="utf-8")
+    file.write_text(
+        '{"A": ["B"], "B": []}',
+        encoding="utf-8"
+    )
 
     result = read_test_repository(file)
 
     assert result == {"A": ["B"], "B": []}
 
 
-# Тест построения графа зависимостей
 def test_dfs():
+
     repository = {
         "A": ["B", "C"],
         "B": ["D"],
@@ -44,8 +51,8 @@ def test_dfs():
     }
 
 
-# Тест ограничения глубины обхода
 def test_dfs_depth():
+
     repository = {
         "A": ["B"],
         "B": ["C"],
@@ -60,8 +67,8 @@ def test_dfs_depth():
     }
 
 
-# Тест исключения пакетов
 def test_dfs_exclude():
+
     repository = {
         "A": ["B", "C"],
         "B": ["D"],
@@ -75,8 +82,8 @@ def test_dfs_exclude():
     assert result["A"] == ["B"]
 
 
-# Тест обработки цикла
 def test_dfs_cycle():
+
     repository = {
         "A": ["B"],
         "B": ["A"]
@@ -90,8 +97,8 @@ def test_dfs_cycle():
     }
 
 
-# Тест поиска обратных зависимостей
 def test_reverse_dependencies():
+
     graph = {
         "A": ["B", "C"],
         "B": ["D"],
@@ -104,8 +111,8 @@ def test_reverse_dependencies():
     assert result == ["C"]
 
 
-# Тест вывода ASCII-дерева
 def test_ascii_tree(capsys):
+
     graph = {
         "A": ["B"],
         "B": ["C"],
@@ -121,18 +128,21 @@ def test_ascii_tree(capsys):
     assert "C" in output
 
 
-# Тест создания файла PlantUML и PNG
 def test_create_graph_image(tmp_path, monkeypatch):
+
     graph = {
         "A": ["B"],
         "B": []
     }
 
-    # Заменяем запуск PlantUML, чтобы тесту не требовалась установка программы
     def fake_run(*args, **kwargs):
+
         return None
 
-    monkeypatch.setattr("src.main.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "main.subprocess.run",
+        fake_run
+    )
 
     output = tmp_path / "graph.png"
 
@@ -151,14 +161,14 @@ def test_create_graph_image(tmp_path, monkeypatch):
     assert "n0 --> n1" in content
 
 
-# Тест ошибки при чтении отсутствующего файла
 def test_missing_file():
+
     with pytest.raises(FileNotFoundError):
         read_test_repository("missing.json")
 
 
-# Тест ошибки при чтении неправильного JSON
 def test_invalid_json(tmp_path):
+
     file = tmp_path / "invalid.json"
     file.write_text('{"A": [}', encoding="utf-8")
 

@@ -347,11 +347,11 @@ def print_dependency_graph(graph):
         print(package, "->", dependencies)
 
     print("\nПрямые зависимости:")
-    for dependency in graph.get(ROOT_PACKAGE, []):
+    for dependency in graph.get(root_package, []):
         print(dependency)
 
 
-ROOT_PACKAGE = ""
+root_package = ""
 
 
 def print_reverse_dependencies(graph, package):
@@ -405,8 +405,8 @@ def run_program(args):
 
     """Выполняет основной сценарий
     визуализации зависимостей."""
-    global ROOT_PACKAGE
-    ROOT_PACKAGE = args.package
+    global root_package
+    root_package = args.package
 
     repository = load_repository(args)
     if repository is None:

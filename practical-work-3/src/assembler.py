@@ -1,5 +1,9 @@
 
-"""Модуль ассемблера учебной виртуальной машины."""
+"""Ассемблер учебной виртуальной машины."""
+
+import argparse
+from pathlib import Path
+
 
 LOAD_CONST_OPCODE = 44
 READ_OPCODE = 33
@@ -14,9 +18,14 @@ REGISTER_BITS = 5
 CONSTANT_BITS = 28
 OFFSET_BITS = 16
 
+C_SHIFT = OPCODE_BITS + REGISTER_BITS
+D_SHIFT = C_SHIFT + OFFSET_BITS
+
 LOAD_OPERANDS_COUNT = 2
 MEMORY_OPERANDS_COUNT = 2
 ABS_OPERANDS_COUNT = 3
+
+MIN_VALUE = 0
 
 INSTRUCTIONS = {
     "load_const": LOAD_CONST_OPCODE,
@@ -27,33 +36,81 @@ INSTRUCTIONS = {
 
 
 def parse_register(value: str) -> int:
-    """Проверяет запись регистра и возвращает его номер."""
+    """Проверяет регистр."""
     if not value.startswith("r") or not value[1:].isdigit():
         raise ValueError(f"Некорректный регистр: {value}")
 
     register = int(value[1:])
 
     if register >= REGISTER_COUNT:
-        raise ValueError(f"Регистр вне диапазона: {value}")
+        raise ValueError(
+            f"Регистр вне диапазона: {value}"
+        )
 
     return register
 
 
 def parse_number(value: str, max_bits: int) -> int:
-    """Проверяет число на соответствие заданной разрядности."""
+    """Проверяет разрядность числа."""
     try:
         number = int(value, 0)
     except ValueError:
-        raise ValueError(f"Некорректное число: {value}") from None
+        raise ValueError(
+            f"Некорректное число: {value}"
+        ) from None
 
-    if number < 0 or number >= 2 ** max_bits:
-        raise ValueError(f"Число вне допустимого диапазона: {value}")
+    if number < MIN_VALUE or number >= 2 ** max_bits:
+        raise ValueError(
+            f"Вне допустимого диапазона: {value}"
+        )
 
     return number
 
 
-def parse_instruction(line: str) -> dict:
-    """Преобразует строку ассемблера в набор полей команды."""
+def parse_load_const(operands: list[str]) -> dict[str, int]:
+    """Разбирает команду загрузки константы."""
+    if len(operands) != LOAD_OPERANDS_COUNT:
+        raise ValueError(
+    "load_const требует 2 операнда"
+)
+
+    return {
+        "A": LOAD_CONST_OPCODE,
+        "B": parse_register(operands[0]),
+        "C": parse_number(operands[1], CONSTANT_BITS),
+    }
+
+
+def parse_memory_command(
+    command: str,
+    operands: list[str]
+) -> dict[str, int]:
+    """Разбирает команды работы с памятью."""
+    if len(operands) != MEMORY_OPERANDS_COUNT:
+        raise ValueError(f"{command} требует 2 операнда")
+
+    return {
+        "A": INSTRUCTIONS[command],
+        "B": parse_register(operands[0]),
+        "C": parse_register(operands[1]),
+    }
+
+
+def parse_abs(operands: list[str]) -> dict[str, int]:
+    """Разбирает команду abs."""
+    if len(operands) != ABS_OPERANDS_COUNT:
+        raise ValueError("abs требует 3 операнда")
+
+    return {
+        "A": ABS_OPCODE,
+        "B": parse_register(operands[0]),
+        "C": parse_number(operands[1], OFFSET_BITS),
+        "D": parse_register(operands[2]),
+    }
+
+
+def parse_instruction(line: str) -> dict[str, int]:
+    """Преобразует строку в поля команды."""
     line = line.split(";", maxsplit=1)[0].strip()
 
     if not line:
@@ -70,41 +127,22 @@ def parse_instruction(line: str) -> dict:
 
     operands = [item.strip() for item in parts[1].split(",")]
 
-    if command == "load_const":
-        if len(operands) != LOAD_OPERANDS_COUNT:
-            raise ValueError("load_const требует 2 операнда")
+    parsers = {
+        "load_const": parse_load_const,
+        "read": lambda values: parse_memory_command(
+            "read", values
+        ),
+        "write": lambda values: parse_memory_command(
+            "write", values
+        ),
+        "abs": parse_abs,
+    }
 
-        return {
-            "A": LOAD_CONST_OPCODE,
-            "B": parse_register(operands[0]),
-            "C": parse_number(operands[1], CONSTANT_BITS),
-        }
+    return parsers[command](operands)
 
-    if command in ("read", "write"):
-        if len(operands) != MEMORY_OPERANDS_COUNT:
-            raise ValueError(f"{command} требует 2 операнда")
-
-        return {
-            "A": INSTRUCTIONS[command],
-            "B": parse_register(operands[0]),
-            "C": parse_register(operands[1]),
-        }
-
-    if command == "abs":
-        if len(operands) != ABS_OPERANDS_COUNT:
-            raise ValueError("abs требует 3 операнда")
-
-        return {
-            "A": ABS_OPCODE,
-            "B": parse_register(operands[0]),
-            "C": parse_number(operands[1], OFFSET_BITS),
-            "D": parse_register(operands[2]),
-        }
-
-    raise ValueError(f"Неизвестная команда: {command}")
 
 def assemble_lines(lines: list[str]) -> list[dict[str, int]]:
-    """Преобразует список строк в промежуточное представление."""
+    """Создает промежуточное представление."""
     program = []
 
     for line_number, line in enumerate(lines, start=1):
@@ -119,38 +157,96 @@ def assemble_lines(lines: list[str]) -> list[dict[str, int]]:
             program.append(instruction)
 
     return program
-import argparse
-from pathlib import Path
 
 
-def main():
-    """Запускает ассемблер из командной строки."""
-    parser = argparse.ArgumentParser(
-        description="Ассемблер учебной виртуальной машины"
+def encode_instruction(instruction: dict[str, int]) -> bytes:
+    """Кодирует команду в пять байтов."""
+    value = instruction["A"]
+    value |= instruction["B"] << OPCODE_BITS
+    value |= instruction["C"] << C_SHIFT
+
+    if "D" in instruction:
+        value |= instruction["D"] << D_SHIFT
+
+    return value.to_bytes(
+        INSTRUCTION_SIZE,
+        byteorder="little"
     )
-    parser.add_argument("input", help="Путь к исходной программе")
-    parser.add_argument("output", help="Путь к выходному бинарному файлу")
+
+
+def encode_program(program: list[dict[str, int]]) -> bytes:
+    """Кодирует программу в байты."""
+    machine_code = bytearray()
+
+    for instruction in program:
+        machine_code.extend(encode_instruction(instruction))
+
+    return bytes(machine_code)
+
+
+def print_ir(program: list[dict[str, int]]) -> None:
+    """Выводит промежуточное представление."""
+    print("Промежуточное представление:")
+
+    for instruction in program:
+        print(instruction)
+
+
+def print_machine_code(machine_code: bytes) -> None:
+    """Выводит машинный код в формате hex."""
+    print("Машинный код:")
+
+    for index in range(0, len(machine_code), INSTRUCTION_SIZE):
+        instruction = machine_code[
+            index:index + INSTRUCTION_SIZE
+        ]
+        formatted = ", ".join(
+            f"0x{byte:02X}" for byte in instruction
+        )
+        print(formatted)
+
+
+def main() -> None:
+    """Запускает ассемблер."""
+    parser = argparse.ArgumentParser(
+        description="Ассемблер виртуальной машины"
+    )
+    parser.add_argument(
+        "input",
+        help="Путь к исходной программе"
+    )
+    parser.add_argument(
+        "output",
+        help="Путь к бинарному файлу"
+    )
     parser.add_argument(
         "--test",
         action="store_true",
-        help="Вывести промежуточное представление"
+        help="Вывести IR и машинный код"
     )
 
     args = parser.parse_args()
 
     try:
-        lines = Path(args.input).read_text(encoding="utf-8").splitlines()
+        lines = Path(args.input).read_text(
+            encoding="utf-8"
+        ).splitlines()
         program = assemble_lines(lines)
+        machine_code = encode_program(program)
+
+        Path(args.output).write_bytes(machine_code)
+
     except (OSError, ValueError) as error:
         parser.error(str(error))
 
+    print_ir(program)
+
     if args.test:
-        for instruction in program:
-            print(instruction)
-    else:
-        print("Промежуточное представление:")
-        for instruction in program:
-            print(instruction)
+        print_machine_code(machine_code)
+
+    print(
+    f"Размер машинного кода: {len(machine_code)} байт"
+)
 
 
 if __name__ == "__main__":

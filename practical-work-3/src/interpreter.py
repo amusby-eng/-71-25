@@ -1,3 +1,4 @@
+
 """Интерпретатор учебной виртуальной машины."""
 
 import csv
@@ -37,7 +38,6 @@ def decode_instruction(data: bytes) -> dict[str, int]:
         raise ValueError("Неверный размер инструкции")
 
     value = int.from_bytes(data, byteorder="little")
-
     opcode = value & OPCODE_MASK
 
     if opcode not in VALID_OPCODES:
@@ -89,6 +89,11 @@ def execute_program(
         field_c = instruction["C"]
 
         if opcode == LOAD_CONST_OPCODE:
+            sign_bit = 1 << (CONSTANT_BITS - 1)
+
+            if field_c & sign_bit:
+                field_c -= 1 << CONSTANT_BITS
+
             memory[register_b] = field_c
 
         elif opcode == READ_OPCODE:
@@ -98,6 +103,11 @@ def execute_program(
         elif opcode == WRITE_OPCODE:
             address = memory[field_c]
             memory[address] = memory[register_b]
+
+        elif opcode == ABS_OPCODE:
+            register_d = instruction["D"]
+            address = memory[register_d] + field_c
+            memory[address] = abs(memory[register_b])
 
 
 def save_memory_dump(

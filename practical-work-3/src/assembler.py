@@ -26,6 +26,8 @@ MEMORY_OPERANDS_COUNT = 2
 ABS_OPERANDS_COUNT = 3
 
 MIN_VALUE = 0
+MIN_SIGNED_VALUE = -(2 ** (CONSTANT_BITS - 1))
+MAX_SIGNED_VALUE = 2 ** (CONSTANT_BITS - 1) - 1
 
 INSTRUCTIONS = {
     "load_const": LOAD_CONST_OPCODE,
@@ -43,9 +45,7 @@ def parse_register(value: str) -> int:
     register = int(value[1:])
 
     if register >= REGISTER_COUNT:
-        raise ValueError(
-            f"Регистр вне диапазона: {value}"
-        )
+        raise ValueError(f"Регистр вне диапазона: {value}")
 
     return register
 
@@ -59,10 +59,20 @@ def parse_number(value: str, max_bits: int) -> int:
             f"Некорректное число: {value}"
         ) from None
 
-    if number < MIN_VALUE or number >= 2 ** max_bits:
+    if max_bits == CONSTANT_BITS:
+        min_value = MIN_SIGNED_VALUE
+        max_value = MAX_SIGNED_VALUE
+    else:
+        min_value = MIN_VALUE
+        max_value = 2 ** max_bits - 1
+
+    if number < min_value or number > max_value:
         raise ValueError(
             f"Вне допустимого диапазона: {value}"
         )
+
+    if number < MIN_VALUE:
+        number = (1 << max_bits) + number
 
     return number
 
@@ -70,9 +80,7 @@ def parse_number(value: str, max_bits: int) -> int:
 def parse_load_const(operands: list[str]) -> dict[str, int]:
     """Разбирает команду загрузки константы."""
     if len(operands) != LOAD_OPERANDS_COUNT:
-        raise ValueError(
-    "load_const требует 2 операнда"
-)
+        raise ValueError("load_const требует 2 операнда")
 
     return {
         "A": LOAD_CONST_OPCODE,
@@ -245,8 +253,8 @@ def main() -> None:
         print_machine_code(machine_code)
 
     print(
-    f"Размер машинного кода: {len(machine_code)} байт"
-)
+        f"Размер машинного кода: {len(machine_code)} байт"
+    )
 
 
 if __name__ == "__main__":

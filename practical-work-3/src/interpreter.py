@@ -2,7 +2,6 @@
 
 import csv
 
-# Константы спецификации УВМ
 INSTRUCTION_SIZE = 5
 MEMORY_SIZE = 1024
 
@@ -26,13 +25,13 @@ OFFSET_BITS = 16
 C_SHIFT = OPCODE_BITS + REGISTER_BITS
 D_SHIFT = C_SHIFT + OFFSET_BITS
 
-# Битовые маски для декодирования
+
 OPCODE_MASK = (1 << OPCODE_BITS) - 1
 REGISTER_MASK = (1 << REGISTER_BITS) - 1
 CONSTANT_MASK = (1 << CONSTANT_BITS) - 1
 OFFSET_MASK = (1 << OFFSET_BITS) - 1
 
-# Маски для работы со знаком (замена магических чисел)
+
 SIGN_BIT_MASK = 1 << (CONSTANT_BITS - 1)
 TWO_POWER_CONSTANT = 1 << CONSTANT_BITS
 
@@ -109,7 +108,6 @@ def execute_program(
         field_c = instruction["C"]
 
         if opcode == LOAD_CONST_OPCODE:
-            # Обработка знакового числа без магических чисел
             if field_c & SIGN_BIT_MASK:
                 field_c -= TWO_POWER_CONSTANT
 
